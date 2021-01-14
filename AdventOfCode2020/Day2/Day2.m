@@ -10,6 +10,8 @@ typedef struct Policy {
 
 @implementation NSString (CharacterCounter)
 
+/// Convenience method for counting how many times a character occurs in a string.
+/// - Returns: the number of occurences
 -(NSInteger)countOfCharacter:(unichar)character {
     unichar buffer[self.length]; 
     [self getCharacters: buffer range: NSMakeRange(0, self.length)];
@@ -23,65 +25,28 @@ typedef struct Policy {
 
 @end
 
-Policy parsePolicyFromCheckingResult(NSTextCheckingResult *regexResult, NSString* _Nonnull string) {
-    assert(regexResult.resultType == NSTextCheckingTypeRegularExpression && "This must be used on a regex match");
-    // 0. whole match 1. min 2. max 3. code unit 4. password
-    assert(regexResult.numberOfRanges == 5);
-    NSNumberFormatter *formatter = [[[NSNumberFormatter alloc] init] autorelease];
-    Policy p = {};
-
-    // Min
-    NSRange minRange = [regexResult rangeAtIndex: 1];
-    unichar *minSubstring= calloc(minRange.length, sizeof(unichar));
-    [string getCharacters: minSubstring range: minRange];
-
-    NSString *substring = [NSString stringWithCharacters: minSubstring length:minRange.length];
-    free(minSubstring);
-    NSNumber *parsed = [formatter numberFromString: substring];
-    
-
-    // Max
-    NSRange maxRange = [regexResult rangeAtIndex: 2];
-    unichar *maxSubstring = calloc(maxRange.length, sizeof(unichar));
-    [string getCharacters:maxSubstring range:maxRange];
-
-    NSString *backToString = [NSString stringWithCharacters:maxSubstring length:maxRange.length];
-    free(maxSubstring);
-    NSNumber *parsedMax = [formatter numberFromString:backToString];
-
-    
-    // Unichar
-    NSRange charRange = [regexResult rangeAtIndex: 3];
-    NSString *subStr = [string substringWithRange: charRange];
-    // Assume just a single character. Actually per our regex, this should only be one and only one character
-    unichar policyCharacter = [subStr characterAtIndex: 0];
-
-    // Password
-    NSRange pwdRange = [regexResult rangeAtIndex: 4];
-    NSString *pwd = [string substringWithRange: pwdRange];
-    [pwd retain]; // we'll say the struct owns the string points
-
-    p.pwd = pwd;
-    p.minOccurences = [parsed intValue];
-    p.maxOccurences = [parsedMax intValue];
-    p.codeUnit = policyCharacter;
-
-    return p;
-
-}
+#pragma mark - Day2
 @interface Day2: Day
 
 @end
 
 @interface Day2 ()
 
-@property (readonly, strong) NSRegularExpression *regex;
+/// The regular expression used for interpreting the day's input (single line)
+@property (readonly, retain) NSRegularExpression *regex;
+
+/// Used for parsing numbers from `NSString`s
+@property (readonly, retain) NSNumberFormatter *numFormatter;
+
+- (Policy)parsePolicyFromCheckingResult:(NSTextCheckingResult *)regexResult input:(NSString*)input;
 
 @end
 
 @implementation Day2 {
     NSRegularExpression *_regex;
 }
+
+@synthesize numFormatter = _numFormatter;
 
 /// This regex property implicitly encodes the policy of Day2
 - (NSRegularExpression *)regex {
@@ -93,8 +58,18 @@ Policy parsePolicyFromCheckingResult(NSTextCheckingResult *regexResult, NSString
     return _regex;
 }
 
+- (NSNumberFormatter *)numFormatter {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        _numFormatter = [NSNumberFormatter new];
+    });
+
+    return _numFormatter;
+}
+
 - (void)dealloc {
     [_regex release];
+    [_numFormatter release];
     [super dealloc];
 }
 
@@ -102,6 +77,59 @@ Policy parsePolicyFromCheckingResult(NSTextCheckingResult *regexResult, NSString
     return [[NSString alloc] initWithFormat: @"Policy:\n\tMinimum Occurence Required: %ld\n\tMaximum Occurenece Required: %ld\n\tCharacter: %C\n\tPassword: %@",
            p.minOccurences, p.maxOccurences, p.codeUnit, p.pwd];
 }
+
+- (Policy)parsePolicyFromCheckingResult:(NSTextCheckingResult *)regexResult input:(nonnull NSString *)input {
+    assert(regexResult.resultType == NSTextCheckingTypeRegularExpression && "This must be used on a regex match");
+
+    Policy p = {};
+    // 0. Whole match 1. Min 2. Max 3. Code unit 4. Password
+    if (regexResult.numberOfRanges != 5) {
+        return p;
+    }
+
+    // For this parsing, it'd probably be better to use the NSString API -[substringWithRange:];
+
+    // Min
+    NSRange minRange = [regexResult rangeAtIndex: 1];
+    unichar *minBuffer = calloc(minRange.length, sizeof(unichar));
+    [input getCharacters:minBuffer range:minRange];
+
+    NSString *minSubstring = [NSString stringWithCharacters:minBuffer length:minRange.length];
+    free(minBuffer);
+    NSNumber *parsed = [self.numFormatter numberFromString:minSubstring];
+    
+
+    // Max
+    NSRange maxRange = [regexResult rangeAtIndex: 2];
+    unichar *maxBuffer = calloc(maxRange.length, sizeof(unichar));
+    [input getCharacters:maxBuffer range:maxRange];
+
+    NSString *maxSubstring = [NSString stringWithCharacters:maxBuffer length:maxRange.length];
+    free(maxBuffer);
+    NSNumber *parsedMax = [self.numFormatter numberFromString:maxSubstring];
+
+    
+    // Unichar
+    NSRange charRange = [regexResult rangeAtIndex: 3];
+    unichar policyCharacter = '\0';
+    // Assume just a single character. Actually per our regex, this should only be one and only one character
+    [input getCharacters:&policyCharacter range:charRange];
+
+    // Password
+    NSRange pwdRange = [regexResult rangeAtIndex: 4];
+    NSString *pwd = [input substringWithRange: pwdRange];
+    [pwd retain]; // we'll say the struct owns the pwd pointers
+
+    p.pwd = pwd;
+    p.minOccurences = [parsed intValue];
+    p.maxOccurences = [parsedMax intValue];
+    p.codeUnit = policyCharacter;
+
+    NSLog(@"policy %@", [self stringFromPolicy:p]);
+
+    return p;
+}
+
 
 - (BOOL)policyCompliesWithEntry:(NSString *)entry {
     NSArray<NSTextCheckingResult *> *matches = [self.regex matchesInString:entry options:0 range: NSMakeRange(0, entry.length)];
@@ -112,7 +140,7 @@ Policy parsePolicyFromCheckingResult(NSTextCheckingResult *regexResult, NSString
     NSUInteger rangeCount = matches[0].numberOfRanges;
     NSRange firstMatch = [matches[0] rangeAtIndex:0];
 
-    Policy p = parsePolicyFromCheckingResult(matches[0], entry);
+    Policy p = [self parsePolicyFromCheckingResult:matches[0] input:entry];
 /* Part 1
     NSInteger count = [p.pwd countOfCharacter:p.codeUnit];
     BOOL meetsPolicy = (count <= p.maxOccurences) && (count >= p.minOccurences);
