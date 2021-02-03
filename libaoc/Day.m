@@ -8,6 +8,7 @@ NS_ASSUME_NONNULL_BEGIN
 	NSString *_input;
 }
 
+
 - (NSString *)input {
 	static dispatch_once_t pred;
 	dispatch_once(&pred, ^{

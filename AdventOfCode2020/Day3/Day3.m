@@ -3,7 +3,7 @@
 #import "Day.h"
 
 NS_ASSUME_NONNULL_BEGIN
-@interface Day3: Day
+@interface Day3: Day<NSNumber *>
 
 @end
 
@@ -18,8 +18,8 @@ NSInteger _horizontalStep;
 NSInteger _verticalStep;
 }
 
-// TODO: make it so this is generic rather than an ID
-@property (nullable) id solution;
+@property (nullable, readwrite) NSNumber *solution;
+
 
 - (BOOL)treeAtSpaceRow:(NSInteger)row column:(NSInteger)column;
 - (void)processInput;
@@ -29,10 +29,11 @@ NSInteger _verticalStep;
 
 @implementation Day3
 
+@synthesize solution = _solution;
+
 - (BOOL)treeAtSpaceRow:(NSInteger)row column:(NSInteger)column {
     row = row % _rows;
     column = column % _columns;
-
     return _field[row][column] == NO;
 }
 
@@ -93,7 +94,7 @@ NSInteger _verticalStep;
             treesEncountered++;
         }
     }
-    self.solution = [NSNumber numberWithInteger:treesEncountered]; 
+    self.solution = [[NSNumber numberWithInteger:treesEncountered] retain]; 
 }
 
 - (instancetype)init {
@@ -109,6 +110,7 @@ NSInteger _verticalStep;
         free(_field[row]);
     }
     free(_field);
+    [_solution release];
     [super dealloc];
 }
 
